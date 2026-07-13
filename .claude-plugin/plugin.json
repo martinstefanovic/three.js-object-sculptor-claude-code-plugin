@@ -1,0 +1,16 @@
+{
+  "name": "threejs-object-sculptor",
+  "version": "0.1.0",
+  "description": "Turn object reference images into quality-gated, action-ready procedural Three.js reconstruction plans and code.",
+  "author": {
+    "name": "Vinh Hien"
+  },
+  "license": "MIT",
+  "keywords": [
+    "threejs",
+    "procedural-3d",
+    "image-analysis",
+    "object-reconstruction",
+    "webgpu"
+  ]
+}

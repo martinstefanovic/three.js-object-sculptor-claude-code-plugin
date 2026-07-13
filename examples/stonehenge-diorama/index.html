@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stonehenge Diorama — Procedural Three.js</title>
+  <style>
+    :root { color-scheme: light; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #f3f3f4; }
+    #app { position: fixed; inset: 0; }
+    .hint {
+      position: fixed; left: 16px; bottom: 14px; z-index: 10;
+      font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: #6b6b70; user-select: none; pointer-events: none;
+    }
+    .hint b { color: #3a3a3f; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="hint"><b>Stonehenge diorama</b> — drag to orbit · scroll to zoom</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ---------- deterministic RNG (so the scene is stable, per skill rules) ----------
+    function mulberry32(seed) {
+      return function () {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    const rand = mulberry32(20260713);
+    const rrange = (a, b) => a + (b - a) * rand();
+
+    // ---------- renderer / scene / camera ----------
+    const app = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.02;
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf3f3f4);
+
+    // Orthographic camera => the isometric diorama look of the reference.
+    const FRUSTUM = 30;
+    let aspect = innerWidth / innerHeight;
+    const camera = new THREE.OrthographicCamera(
+      -FRUSTUM * aspect / 2, FRUSTUM * aspect / 2,
+      FRUSTUM / 2, -FRUSTUM / 2, 0.1, 200
+    );
+    camera.position.set(24, 20, 24);
+    camera.lookAt(0, 1, 0);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minZoom = 0.6;
+    controls.maxZoom = 3.0;
+    controls.maxPolarAngle = Math.PI * 0.49;
+
+    // ---------- lighting ----------
+    const hemi = new THREE.HemisphereLight(0xdfefff, 0x6a7d4a, 0.85);
+    scene.add(hemi);
+
+    const key = new THREE.DirectionalLight(0xfff4e0, 2.4);
+    key.position.set(14, 24, 10);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 80;
+    const s = 20;
+    key.shadow.camera.left = -s; key.shadow.camera.right = s;
+    key.shadow.camera.top = s; key.shadow.camera.bottom = -s;
+    key.shadow.bias = -0.0004;
+    key.shadow.radius = 3;
+    scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0xbcd0ff, 0.35);
+    fill.position.set(-12, 8, -10);
+    scene.add(fill);
+
+    // ---------- shared materials ----------
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x6fae3d, roughness: 1, flatShading: true });
+    const cliffMat = new THREE.MeshStandardMaterial({ color: 0xb5844f, roughness: 1, flatShading: true });
+    const cliffDarkMat = new THREE.MeshStandardMaterial({ color: 0x8a6238, roughness: 1, flatShading: true });
+    const barkMat = new THREE.MeshStandardMaterial({ color: 0x7a5637, roughness: 1, flatShading: true });
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0x74ad42, roughness: 1, flatShading: true });
+    const stoneBase = new THREE.MeshStandardMaterial({ color: 0xc2c6ca, roughness: 1, flatShading: true });
+
+    // per-stone tinted clone for weathered variation
+    function stoneMat() {
+      const m = stoneBase.clone();
+      const t = rrange(-0.10, 0.06);
+      m.color.offsetHSL(0, rrange(-0.02, 0.01), t);
+      return m;
+    }
+
+    // jitter box/geometry vertices for a hand-hewn, weathered low-poly feel
+    function weather(geo, amt) {
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        p.setXYZ(i,
+          p.getX(i) + rrange(-amt, amt),
+          p.getY(i) + rrange(-amt, amt),
+          p.getZ(i) + rrange(-amt, amt));
+      }
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    const root = new THREE.Group();
+    scene.add(root);
+
+    // ---------- floating island ----------
+    const island = new THREE.Group();
+    root.add(island);
+
+    // domed grass top
+    const topGeo = new THREE.CylinderGeometry(11, 11, 1.4, 64, 1);
+    // dome the top ring of vertices upward a touch
+    (function dome(geo) {
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+        if (y > 0.1) {
+          const d = Math.sqrt(x * x + z * z) / 11;
+          p.setY(i, y + (1 - d * d) * 0.9);
+        }
+      }
+      geo.computeVertexNormals();
+    })(topGeo);
+    const grass = new THREE.Mesh(topGeo, grassMat);
+    grass.position.y = 0;
+    grass.receiveShadow = true;
+    grass.castShadow = true;
+    island.add(grass);
+
+    // rocky underside — a tapered, faceted cone
+    const underGeo = weather(new THREE.CylinderGeometry(11, 2.2, 7.5, 16, 4), 0.28);
+    const under = new THREE.Mesh(underGeo, cliffMat);
+    under.position.y = -4.2;
+    under.castShadow = true;
+    under.receiveShadow = true;
+    island.add(under);
+
+    const underGeo2 = weather(new THREE.ConeGeometry(4.2, 5.5, 10, 3), 0.35);
+    const under2 = new THREE.Mesh(underGeo2, cliffDarkMat);
+    under2.position.y = -8.4;
+    under2.castShadow = true;
+    island.add(under2);
+
+    const TOP = 0.75; // grass surface height where props sit
+
+    // ---------- stone builders ----------
+    function upright(w, h, d) {
+      const g = weather(new THREE.BoxGeometry(w, h, d, 1, 2, 1), 0.06);
+      const m = new THREE.Mesh(g, stoneMat());
+      m.castShadow = true; m.receiveShadow = true;
+      return m;
+    }
+
+    // a trilithon: two uprights + a lintel across the top
+    function trilithon() {
+      const grp = new THREE.Group();
+      const h = rrange(3.2, 3.9);
+      const gap = 1.5;
+      const a = upright(1.0, h, 0.7); a.position.set(-gap / 2, h / 2, 0);
+      const b = upright(1.0, h, 0.7); b.position.set(gap / 2, h / 2, 0);
+      a.rotation.z = rrange(-0.03, 0.03);
+      b.rotation.z = rrange(-0.03, 0.03);
+      const lintel = upright(gap + 1.4, 0.7, 0.8);
+      lintel.position.set(0, h + 0.35, 0);
+      grp.add(a, b, lintel);
+      return grp;
+    }
+
+    // outer sarsen ring
+    const ringGroup = new THREE.Group();
+    island.add(ringGroup);
+    const RING_R = 4.6;
+    const RING_N = 7;
+    for (let i = 0; i < RING_N; i++) {
+      const ang = (i / RING_N) * Math.PI * 2 + 0.15;
+      // leave a couple of gaps like the ruined reference
+      if (i === 3 || i === 6) continue;
+      const t = trilithon();
+      t.position.set(Math.cos(ang) * RING_R, TOP, Math.sin(ang) * RING_R);
+      t.rotation.y = -ang + Math.PI / 2;
+      ringGroup.add(t);
+    }
+
+    // inner horseshoe of taller single standing stones
+    const HS_R = 2.5;
+    for (let i = 0; i < 5; i++) {
+      const ang = (-0.6 + (i / 4) * 1.2) * Math.PI; // open arc
+      const h = rrange(3.6, 4.4);
+      const st = upright(0.9, h, 0.7);
+      st.position.set(Math.cos(ang) * HS_R, TOP + h / 2, Math.sin(ang) * HS_R);
+      st.rotation.y = -ang;
+      st.rotation.z = rrange(-0.04, 0.04);
+      island.add(st);
+    }
+
+    // central altar / fallen stone (flat)
+    const altarGeo = weather(new THREE.BoxGeometry(2.6, 0.6, 1.2), 0.06);
+    const altar = new THREE.Mesh(altarGeo, stoneMat());
+    altar.position.set(0.2, TOP + 0.3, 0.3);
+    altar.rotation.y = 0.4;
+    altar.castShadow = true; altar.receiveShadow = true;
+    island.add(altar);
+
+    // a few toppled stones lying around
+    for (let i = 0; i < 4; i++) {
+      const g = weather(new THREE.BoxGeometry(rrange(1.6, 2.4), 0.6, rrange(0.7, 1.0)), 0.06);
+      const m = new THREE.Mesh(g, stoneMat());
+      const ang = rrange(0, Math.PI * 2);
+      const r = rrange(5.6, 6.4);
+      m.position.set(Math.cos(ang) * r, TOP + 0.3, Math.sin(ang) * r);
+      m.rotation.set(rrange(-0.1, 0.1), rrange(0, Math.PI), rrange(-0.1, 0.1));
+      m.castShadow = true; m.receiveShadow = true;
+      island.add(m);
+    }
+
+    // ---------- scattered boulders in an outer band ----------
+    function boulder(size) {
+      const g = weather(new THREE.IcosahedronGeometry(size, 0), size * 0.18);
+      const m = new THREE.Mesh(g, stoneMat());
+      m.castShadow = true; m.receiveShadow = true;
+      m.rotation.set(rrange(0, 6.28), rrange(0, 6.28), rrange(0, 6.28));
+      m.scale.y *= rrange(0.6, 0.9);
+      return m;
+    }
+    for (let i = 0; i < 16; i++) {
+      const ang = rrange(0, Math.PI * 2);
+      const r = rrange(6.2, 9.6);
+      const size = rrange(0.35, 1.0);
+      const b = boulder(size);
+      b.position.set(Math.cos(ang) * r, TOP + size * 0.35, Math.sin(ang) * r);
+      island.add(b);
+    }
+
+    // tiny pebble markers dotted on the field
+    for (let i = 0; i < 26; i++) {
+      const ang = rrange(0, Math.PI * 2);
+      const r = rrange(2.0, 9.8);
+      const size = rrange(0.08, 0.2);
+      const p = boulder(size);
+      p.position.set(Math.cos(ang) * r, TOP + size * 0.3, Math.sin(ang) * r);
+      island.add(p);
+    }
+
+    // ---------- low-poly trees near the rim ----------
+    function tree() {
+      const g = new THREE.Group();
+      const trunkH = rrange(1.1, 1.6);
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.24, trunkH, 6),
+        barkMat
+      );
+      trunk.position.y = trunkH / 2;
+      trunk.castShadow = true;
+      g.add(trunk);
+
+      const blobs = 2 + Math.floor(rand() * 2);
+      for (let i = 0; i < blobs; i++) {
+        const rad = rrange(0.7, 1.05) * (1 - i * 0.18);
+        const canopy = new THREE.Mesh(new THREE.IcosahedronGeometry(rad, 0), leafMat.clone());
+        canopy.material.color.offsetHSL(0, 0, rrange(-0.05, 0.05));
+        canopy.position.set(rrange(-0.2, 0.2), trunkH + 0.5 + i * rad * 0.9, rrange(-0.2, 0.2));
+        canopy.castShadow = true; canopy.receiveShadow = true;
+        g.add(canopy);
+      }
+      return g;
+    }
+    const treeSpots = [
+      [3.2, 8.4], [-2.0, 8.9], [8.6, 2.0], [-8.7, -1.6], [1.5, -9.0], [-6.5, 6.2]
+    ];
+    for (const [x, z] of treeSpots) {
+      const t = tree();
+      t.position.set(x, TOP, z);
+      t.scale.setScalar(rrange(0.9, 1.2));
+      island.add(t);
+    }
+
+    // ---------- soft ground shadow so the island reads as "floating" ----------
+    const shadowTex = (() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const g = ctx.createRadialGradient(128, 128, 10, 128, 128, 128);
+      g.addColorStop(0, 'rgba(0,0,0,0.28)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
+      return new THREE.CanvasTexture(c);
+    })();
+    const shadowPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })
+    );
+    shadowPlane.rotation.x = -Math.PI / 2;
+    shadowPlane.position.y = -12.5;
+    scene.add(shadowPlane);
+
+    // ---------- resize + render loop ----------
+    addEventListener('resize', () => {
+      aspect = innerWidth / innerHeight;
+      camera.left = -FRUSTUM * aspect / 2;
+      camera.right = FRUSTUM * aspect / 2;
+      camera.top = FRUSTUM / 2;
+      camera.bottom = -FRUSTUM / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    let t0 = 0;
+    function animate(t) {
+      requestAnimationFrame(animate);
+      const dt = (t - t0) / 1000; t0 = t;
+      root.rotation.y += dt * 0.06; // slow turntable; comment out to hold still
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    // expose for debugging
+    window.__scene = { scene, camera, renderer };
+  </script>
+</body>
+</html>

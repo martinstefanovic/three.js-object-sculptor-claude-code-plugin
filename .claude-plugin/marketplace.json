@@ -1,0 +1,26 @@
+{
+  "name": "threejs-object-sculptor-marketplace",
+  "owner": {
+    "name": "Vinh Hien"
+  },
+  "metadata": {
+    "description": "Three.js Object Sculptor for Claude Code — image-to-procedural-3D reconstruction.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "threejs-object-sculptor",
+      "source": "./",
+      "description": "Validate object photos and rebuild them as quality-gated, action-ready procedural Three.js models.",
+      "version": "0.1.0",
+      "category": "Developer Tools",
+      "keywords": [
+        "threejs",
+        "procedural-3d",
+        "image-analysis",
+        "object-reconstruction",
+        "webgpu"
+      ]
+    }
+  ]
+}
