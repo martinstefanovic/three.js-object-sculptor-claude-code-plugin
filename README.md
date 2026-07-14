@@ -1,5 +1,10 @@
 # Three.js Object Sculptor (Claude Code)
 
+<p align="center">
+  <img src="examples/offroad-suv/reference.jpg" alt="Reference photo — stylized low-poly off-road SUV" width="360">
+</p>
+<p align="center"><em>A single reference photo like this is all the plugin needs — see the reconstructed, drivable scene in <a href="examples/offroad-suv/">examples/offroad-suv/</a>.</em></p>
+
 Turn the object in an attached image into a quality-gated, animation-ready procedural Three.js model built entirely with code.
 
 Three.js Object Sculptor is a **Claude Code plugin** for rebuilding the visible object in a user-provided image as a code-only Three.js model. It does not do photogrammetry, download an art pack, or extract a perfect mesh from one image. Instead, it guides Claude through a sculpting workflow: validate the image, describe the object precisely, decompose it into geometry and material systems, build from blockout to detail, wire an animation-friendly hierarchy, then compare the browser render against the original reference.

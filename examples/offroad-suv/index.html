@@ -9,11 +9,21 @@
     html, body { margin: 0; height: 100%; overflow: hidden; background: #5b8fd0; }
     #app { position: fixed; inset: 0; }
     .hint {
-      position: fixed; left: 16px; bottom: 14px; z-index: 10;
+      position: fixed; left: 224px; bottom: 14px; z-index: 10;
       font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       color: #eaf2ff; user-select: none; pointer-events: none; opacity: .85;
     }
     .hint b { color: #fff; }
+    #ref {
+      position: fixed; left: 16px; bottom: 16px; z-index: 10; margin: 0;
+      width: 196px; border-radius: 10px; overflow: hidden; user-select: none;
+      border: 2px solid rgba(255,255,255,.55); box-shadow: 0 6px 22px rgba(0,0,0,.4);
+    }
+    #ref img { display: block; width: 100%; }
+    #ref figcaption {
+      position: absolute; top: 0; left: 0; right: 0; padding: 3px 8px;
+      font: 700 11px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.5);
+    }
     #mode, #spin {
       position: fixed; right: 16px; z-index: 10; cursor: pointer;
       background: rgba(22,22,26,0.72); color: #fff; border: 0; border-radius: 10px;
@@ -31,6 +41,7 @@
   <div class="hint"><b>Off-road SUV</b> — drag to orbit · scroll to zoom · press <b>N</b> for day/night</div>
   <button id="mode">🌙 Night</button>
   <button id="spin">⏸ Pause spin</button>
+  <figure id="ref"><img src="reference.jpg" alt="Reference photo"><figcaption>Reference</figcaption></figure>
 
   <script type="importmap">
   {
