@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jeep Wrangler — Procedural Three.js</title>
+  <style>
+    :root { color-scheme: light; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #f2debb; }
+    #app { position: fixed; inset: 0; }
+    .hint {
+      position: fixed; left: 224px; bottom: 14px; z-index: 10;
+      font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: #6b5a3a; user-select: none; pointer-events: none; opacity: .9;
+    }
+    .hint b { color: #4a3d24; }
+    #spin {
+      position: fixed; top: 16px; right: 16px; z-index: 10; cursor: pointer;
+      background: rgba(40,34,24,0.72); color: #fff; border: 0; border-radius: 10px;
+      padding: 9px 14px; font: 700 14px system-ui, sans-serif;
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      box-shadow: 0 6px 20px rgba(0,0,0,.2);
+    }
+    #spin:hover { background: rgba(60,50,36,0.85); }
+    #ref {
+      position: fixed; left: 16px; bottom: 16px; z-index: 10; margin: 0;
+      width: 196px; border-radius: 10px; overflow: hidden; user-select: none;
+      border: 2px solid rgba(255,255,255,.6); box-shadow: 0 6px 22px rgba(0,0,0,.3);
+    }
+    #ref img { display: block; width: 100%; }
+    #ref figcaption {
+      position: absolute; top: 0; left: 0; right: 0; padding: 3px 8px;
+      font: 700 11px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="hint"><b>Jeep Wrangler</b> — drag to orbit · scroll to zoom</div>
+  <button id="spin">⏸ Pause spin</button>
+  <figure id="ref"><img src="reference.jpg" alt="Reference photo"><figcaption>Reference</figcaption></figure>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+
+    // ---------- renderer / scene / camera ----------
+    const app = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf2debb);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(8.5, 4.2, 8.5);
+    camera.lookAt(0, 1.4, 0);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.3, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 6; controls.maxDistance = 28;
+    controls.maxPolarAngle = Math.PI * 0.52;
+
+    // ---------- lighting (warm desert) ----------
+    scene.add(new THREE.HemisphereLight(0xfff0d8, 0xc7a877, 0.5));
+    const key = new THREE.DirectionalLight(0xfff1dc, 2.2);
+    key.position.set(9, 13, 7);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1; key.shadow.camera.far = 55;
+    const s = 10;
+    key.shadow.camera.left = -s; key.shadow.camera.right = s;
+    key.shadow.camera.top = s; key.shadow.camera.bottom = -s;
+    key.shadow.bias = -0.0004; key.shadow.radius = 4;
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffe0b8, 0.4); fill.position.set(-8, 5, -6); scene.add(fill);
+
+    // ---------- materials ----------
+    const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0, flatShading: o.flat ?? false, ...o });
+    const M = {
+      body:   mat(0xe0913f, { rough: 0.55, metal: 0.1 }),
+      dark:   mat(0x4b4852, { rough: 0.65 }),           // flares, bumpers, rack
+      dark2:  mat(0x3a3842, { rough: 0.7 }),
+      glass:  mat(0x262a36, { rough: 0.15, metal: 0.3 }),
+      glassD: mat(0x262a36, { rough: 0.15, metal: 0.3, side: THREE.DoubleSide }),
+      chrome: mat(0xcaced2, { rough: 0.25, metal: 0.9 }),
+      grille: mat(0x24222a, { rough: 0.6 }),
+      tire:   mat(0x1d1d20, { rough: 0.85, flat: true }),
+      rim:    mat(0x8a7748, { rough: 0.45, metal: 0.5, flat: true }),
+      rimHub: mat(0x5f5230, { rough: 0.5, metal: 0.4 }),
+      lens:   mat(0xf4f5f2, { rough: 0.12, emissive: 0xffffff, emissiveIntensity: 0.7 }),
+      amber:  mat(0xe0872c, { rough: 0.4, emissive: 0x6a3d06, emissiveIntensity: 0.3 }),
+      tail:   mat(0xc23a2c, { rough: 0.4, emissive: 0x5a0e06, emissiveIntensity: 0.4 }),
+      rock:   mat(0xe9e2d2, { rough: 1, flat: true }),
+    };
+
+    // ---------- helpers ----------
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const rbox = (w, h, d, r, m) => { const x = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), m); x.castShadow = x.receiveShadow = true; return x; };
+    const bx = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = x.receiveShadow = true; return x; };
+    const cylZ = (r, len, seg, m) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); g.rotation.x = Math.PI / 2; g.castShadow = g.receiveShadow = true; return g; };
+    const cylX = (r, len, seg, m) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); g.rotation.z = Math.PI / 2; g.castShadow = g.receiveShadow = true; return g; };
+    const tube = (p0, p1, r, m) => {
+      const d = new THREE.Vector3().subVectors(p1, p0);
+      const x = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 10), m);
+      x.castShadow = true;
+      x.position.copy(p0).addScaledVector(d, 0.5);
+      x.quaternion.setFromUnitVectors(V(0, 1, 0), d.clone().normalize());
+      return x;
+    };
+
+    const jeep = new THREE.Group();
+    scene.add(jeep);
+    const runtime = { wheels: [] };
+    jeep.userData.sculptRuntime = runtime;
+
+    // ==================== BODY (boxy) ====================
+    const lower = rbox(4.5, 0.7, 2.28, 0.12, M.body); lower.position.set(-0.1, 1.35, 0); jeep.add(lower);
+    const upper = rbox(4.5, 0.7, 2.24, 0.14, M.body); upper.position.set(-0.1, 1.9, 0); jeep.add(upper);
+    // hood
+    const hood = rbox(1.7, 0.24, 2.02, 0.08, M.body); hood.position.set(1.95, 1.78, 0); jeep.add(hood);
+    // hood details: latches + vent slats
+    for (const zs of [1, -1]) { const l = bx(0.14, 0.06, 0.16, M.dark2); l.position.set(2.7, 1.86, zs * 0.7); jeep.add(l); }
+    for (let i = 0; i < 5; i++) { const v = bx(0.5, 0.03, 0.05, M.dark2); v.position.set(1.7, 1.9, -0.4 + i * 0.2); jeep.add(v); }
+
+    // ==================== FRONT (7-slot grille + round lights) ====================
+    const FX = 2.72;
+    const grille = rbox(0.22, 0.66, 1.62, 0.05, M.body); grille.position.set(FX, 1.72, 0); jeep.add(grille);
+    for (let i = -3; i <= 3; i++) { const slot = bx(0.14, 0.54, 0.11, M.grille); slot.position.set(FX + 0.08, 1.72, i * 0.2); jeep.add(slot); }
+    // round headlights flanking the grille
+    for (const zs of [1, -1]) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.16, 20), M.chrome);
+      ring.rotation.z = Math.PI / 2; ring.position.set(FX + 0.06, 1.72, zs * 1.0); ring.castShadow = true; jeep.add(ring);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.09, 20), M.lens);
+      lens.rotation.z = Math.PI / 2; lens.position.set(FX + 0.15, 1.72, zs * 1.0); jeep.add(lens);
+      // small turn signal
+      const ts = bx(0.1, 0.14, 0.16, M.amber); ts.position.set(FX + 0.04, 1.72, zs * 1.28); jeep.add(ts);
+    }
+    // front bumper (dark) + fog lights + tow hooks
+    const fbumper = rbox(0.44, 0.4, 2.5, 0.1, M.dark); fbumper.position.set(FX + 0.12, 1.18, 0); jeep.add(fbumper);
+    for (const zs of [1, -1]) {
+      const fog = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.1, 14), M.lens);
+      fog.rotation.z = Math.PI / 2; fog.position.set(FX + 0.36, 1.18, zs * 0.62); jeep.add(fog);
+      const hook = bx(0.18, 0.12, 0.1, M.amber); hook.position.set(FX + 0.34, 0.98, zs * 0.34); jeep.add(hook);
+    }
+
+    // ==================== WINDSHIELD (upright) + WIPERS ====================
+    const wsGlass = bx(0.1, 0.92, 1.9, M.glass); wsGlass.position.set(1.16, 2.42, 0); wsGlass.rotation.z = 0.14; jeep.add(wsGlass);
+    const wsFrameT = bx(0.16, 0.12, 2.02, M.body); wsFrameT.position.set(1.03, 2.86, 0); jeep.add(wsFrameT);
+    for (const zs of [1, -1]) { const ap = bx(0.14, 1.0, 0.12, M.body); ap.position.set(1.16, 2.42, zs * 0.98); ap.rotation.z = 0.14; jeep.add(ap); }
+    for (const zs of [1, -1]) { const wiper = bx(0.5, 0.03, 0.04, M.dark2); wiper.position.set(1.32, 2.02, zs * 0.5); wiper.rotation.z = 0.14; jeep.add(wiper); }
+
+    // ==================== GREENHOUSE (hardtop + 4-door glass) ====================
+    const roof = rbox(3.0, 0.42, 2.06, 0.14, M.body); roof.position.set(-0.55, 2.82, 0); jeep.add(roof);
+    for (const zs of [1, -1]) {
+      const sg = bx(2.9, 0.62, 0.05, M.glassD); sg.position.set(-0.55, 2.4, zs * 1.03); jeep.add(sg);
+      const bpil = bx(0.13, 0.66, 0.06, M.body); bpil.position.set(0.05, 2.4, zs * 1.06); jeep.add(bpil);   // B-pillar
+      const cpil = bx(0.13, 0.66, 0.06, M.body); cpil.position.set(-1.15, 2.4, zs * 1.06); jeep.add(cpil);  // C-pillar
+      const dpil = bx(0.14, 0.66, 0.06, M.body); dpil.position.set(-2.0, 2.4, zs * 1.06); jeep.add(dpil);   // rear
+    }
+    // rear
+    const rear = rbox(0.2, 1.2, 2.1, 0.08, M.body); rear.position.set(-2.35, 1.9, 0); jeep.add(rear);
+    const rearGlass = bx(0.08, 0.5, 1.7, M.glass); rearGlass.position.set(-2.45, 2.5, 0); jeep.add(rearGlass);
+    for (const zs of [1, -1]) { const tl = bx(0.1, 0.34, 0.24, M.tail); tl.position.set(-2.46, 1.5, zs * 0.86); jeep.add(tl); }
+    // rear-mounted spare tire
+    const spare = new THREE.Group(); spare.position.set(-2.62, 1.6, 0.1); spare.rotation.y = Math.PI / 2; jeep.add(spare);
+    spare.add(cylZ(0.62, 0.4, 14, M.tire));
+    spare.add(cylZ(0.34, 0.42, 12, M.rim));
+    const spareHub = cylZ(0.12, 0.44, 10, M.rimHub); spare.add(spareHub);
+
+    // ==================== ROOF RACK + 4 SPOTLIGHTS ====================
+    const rackY = 3.18, rackFront = 1.35, rackBack = -2.3, rackW = 1.02;
+    const rk = M.dark2;
+    // corner posts
+    for (const [x, z] of [[rackFront, rackW], [rackFront, -rackW], [rackBack, rackW], [rackBack, -rackW]])
+      jeep.add(tube(V(x, 2.95, z), V(x, rackY, z), 0.05, rk));
+    // top rails (perimeter)
+    jeep.add(tube(V(rackFront, rackY, rackW), V(rackBack, rackY, rackW), 0.05, rk));
+    jeep.add(tube(V(rackFront, rackY, -rackW), V(rackBack, rackY, -rackW), 0.05, rk));
+    jeep.add(tube(V(rackFront, rackY, rackW), V(rackFront, rackY, -rackW), 0.05, rk));
+    jeep.add(tube(V(rackBack, rackY, rackW), V(rackBack, rackY, -rackW), 0.05, rk));
+    // cross bars
+    for (const x of [0.6, -0.3, -1.2]) jeep.add(tube(V(x, rackY, rackW), V(x, rackY, -rackW), 0.045, rk));
+    // 4 round spotlights at the front of the rack, facing forward
+    for (const z of [-0.78, -0.26, 0.26, 0.78]) {
+      const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.18, 16), M.dark2);
+      housing.rotation.z = Math.PI / 2; housing.position.set(rackFront + 0.05, rackY + 0.06, z); housing.castShadow = true; jeep.add(housing);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16), M.lens);
+      lens.rotation.z = Math.PI / 2; lens.position.set(rackFront + 0.16, rackY + 0.06, z); jeep.add(lens);
+    }
+
+    // ==================== DOORS + MIRRORS ====================
+    for (const zs of [1, -1]) {
+      // door seams
+      for (const x of [0.55, -0.75]) { const seam = bx(0.03, 1.2, 0.03, M.dark2); seam.position.set(x, 1.7, zs * 1.13); jeep.add(seam); }
+      // handles
+      for (const x of [0.2, -1.1]) { const h = bx(0.16, 0.06, 0.04, M.dark2); h.position.set(x, 1.85, zs * 1.14); jeep.add(h); }
+      // mirror on A-pillar
+      const marm = bx(0.12, 0.06, 0.12, M.dark2); marm.position.set(1.35, 2.15, zs * 1.1); jeep.add(marm);
+      const mhead = rbox(0.14, 0.2, 0.1, 0.04, M.dark2); mhead.position.set(1.4, 2.16, zs * 1.24); jeep.add(mhead);
+    }
+
+    // ==================== FENDER FLARES ====================
+    for (const [ax, zs] of [[1.9, 1], [1.9, -1], [-1.9, 1], [-1.9, -1]]) {
+      const flare = rbox(1.85, 0.5, 0.42, 0.16, M.dark);
+      flare.position.set(ax, 1.18, zs * 1.2); jeep.add(flare);
+    }
+
+    // ==================== WHEELS (off-road + beadlock rims) ====================
+    function wheel() {
+      const g = new THREE.Group();
+      g.add(cylZ(0.78, 0.55, 16, M.tire));
+      // chunky tread lugs
+      for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; const lug = bx(0.14, 0.1, 0.58, M.tire); lug.position.set(Math.cos(a) * 0.76, Math.sin(a) * 0.76, 0); lug.rotation.z = a; g.add(lug); }
+      g.add(cylZ(0.46, 0.5, 14, M.rim));
+      // beadlock ring
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.05, 8, 20), M.rimHub); ring.position.z = 0.24; g.add(ring);
+      const hub = cylZ(0.14, 0.56, 10, M.rimHub); g.add(hub);
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 6), M.rimHub); bolt.rotation.x = Math.PI / 2; bolt.position.set(Math.cos(a) * 0.28, Math.sin(a) * 0.28, 0.25); g.add(bolt); }
+      return g;
+    }
+    for (const [ax, zs] of [[1.9, 1], [1.9, -1], [-1.9, 1], [-1.9, -1]]) {
+      const w = wheel(); w.position.set(ax, 0.78, zs * 1.16); jeep.add(w); runtime.wheels.push(w);
+    }
+
+    // ==================== ground + rocks ====================
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0xbf9d63, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+    let rseed = 7;
+    const rr = () => { rseed = (rseed * 9301 + 49297) % 233280; return rseed / 233280; };
+    for (let i = 0; i < 6; i++) {
+      const size = 0.25 + rr() * 0.5;
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0), M.rock);
+      rock.castShadow = rock.receiveShadow = true;
+      const a = rr() * Math.PI * 2, d = 4.5 + rr() * 3;
+      rock.position.set(Math.cos(a) * d, size * 0.5, Math.sin(a) * d);
+      rock.rotation.set(rr() * 6, rr() * 6, rr() * 6);
+      scene.add(rock);
+    }
+
+    // ==================== POST-PROCESSING ====================
+    const composer = new EffectComposer(renderer);
+    composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    composer.setSize(innerWidth, innerHeight);
+    composer.addPass(new RenderPass(scene, camera));
+    const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+    gtao.output = GTAOPass.OUTPUT.Default;
+    gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false });
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+    composer.addPass(gtao);
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.28, 0.5, 0.88));
+    composer.addPass(new OutputPass());
+    composer.addPass(new SMAAPass(innerWidth, innerHeight));
+
+    // ---------- resize + loop ----------
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+    });
+    let rotating = true;
+    const spinBtn = document.getElementById('spin');
+    if (spinBtn) spinBtn.onclick = () => { rotating = !rotating; spinBtn.textContent = rotating ? '⏸ Pause spin' : '▶ Resume spin'; };
+    addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); rotating = !rotating; spinBtn.textContent = rotating ? '⏸ Pause spin' : '▶ Resume spin'; } });
+
+    let t0 = 0;
+    function animate(t) {
+      requestAnimationFrame(animate);
+      const dt = (t - t0) / 1000; t0 = t;
+      if (rotating) jeep.rotation.y += dt * 0.22;
+      controls.update();
+      composer.render();
+    }
+    requestAnimationFrame(animate);
+    window.__scene = { scene, camera, renderer, jeep };
+  </script>
+</body>
+</html>

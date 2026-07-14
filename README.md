@@ -194,10 +194,13 @@ off-road SUV, generated end-to-end with this skill from a single reference image
 self-contained Three.js scene with an action-ready wheel hierarchy, GTAO + bloom post-processing,
 real headlight/roof spotlights, and a day/night ("off-road") mode toggle (press `N`).
 
-To view it (ES-module scenes must be served over HTTP, not opened as a `file://`):
+A second example, [`examples/jeep-wrangler/`](examples/jeep-wrangler/), reconstructs a boxy low-poly
+Jeep Wrangler (7-slot grille, roof rack + spotlights, off-road tires, rear spare) in a warm desert scene.
+
+To view either (ES-module scenes must be served over HTTP, not opened as a `file://`):
 
 ```bash
-cd examples/offroad-suv
+cd examples/offroad-suv        # or examples/jeep-wrangler
 python3 -m http.server 8781
 # then open http://localhost:8781/
 ```
@@ -210,7 +213,8 @@ python3 -m http.server 8781
 commands/sculpt.md                    # /threejs-object-sculptor:sculpt slash command
 skills/object-to-threejs-procedural/  # the skill (SKILL.md + references/)
 scripts/                              # Python helper scripts
-examples/offroad-suv/                 # worked example scene
+examples/offroad-suv/                 # worked example scene (drivable, day/night)
+examples/jeep-wrangler/               # worked example scene (Jeep, desert)
 ```
 
 Important scripts:
