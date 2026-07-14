@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Three.js Object Sculptor — Live Examples</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f5f2ec; --card:#fff; --fg:#23201b; --muted:#6b6459; --line:#e5dfd4; --accent:#c9772e; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#16150f; --card:#211f18; --fg:#efeae0; --muted:#a49b8a; --line:#332f26; --accent:#e0913f; } }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { max-width: 960px; margin:0 auto; padding: 48px 20px 72px; }
+    header h1 { font-size: clamp(28px,5vw,40px); margin:0 0 8px; letter-spacing:-.02em; }
+    header p { color:var(--muted); font-size:18px; margin:0 0 8px; max-width:60ch; }
+    .repo { display:inline-block; margin-top:10px; color:var(--accent); font-weight:600; text-decoration:none; }
+    .repo:hover { text-decoration:underline; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:22px; margin-top:36px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; text-decoration:none; color:inherit; transition:transform .12s ease, box-shadow .12s ease; }
+    .card:hover { transform:translateY(-3px); box-shadow:0 12px 30px rgba(0,0,0,.14); }
+    .card img { display:block; width:100%; aspect-ratio:16/10; object-fit:cover; background:var(--line); }
+    .card .body { padding:16px 18px 18px; }
+    .card h2 { margin:0 0 4px; font-size:19px; }
+    .card p { margin:0; color:var(--muted); font-size:14px; }
+    .tag { display:inline-block; margin-top:10px; font-size:12px; font-weight:700; color:var(--accent); }
+    footer { margin-top:48px; color:var(--muted); font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Three.js Object Sculptor</h1>
+      <p>A Claude Code plugin that turns a single reference image into a code-only procedural Three.js model — geometry, materials and lighting generated entirely with code. Below are live example scenes, each rebuilt from one reference photo.</p>
+      <a class="repo" href="https://github.com/martinstefanovic/three.js-object-sculptor-claude-code-plugin">View the repository on GitHub →</a>
+    </header>
+
+    <div class="grid">
+      <a class="card" href="examples/jeep-wrangler/">
+        <img src="examples/jeep-wrangler/render.png" alt="Low-poly Jeep Wrangler scene" />
+        <div class="body">
+          <h2>Jeep Wrangler</h2>
+          <p>Boxy 4-door Jeep — 7-slot grille, roof rack + spotlights, off-road tires, rear spare, warm desert scene.</p>
+          <span class="tag">Open live scene →</span>
+        </div>
+      </a>
+
+      <a class="card" href="examples/offroad-suv/">
+        <img src="examples/offroad-suv/render.png" alt="Low-poly off-road SUV scene" />
+        <div class="body">
+          <h2>Off-road SUV</h2>
+          <p>Drivable in the browser (WASD), with a day/night off-road mode — headlights and roof spotlights light the road.</p>
+          <span class="tag">Open live scene →</span>
+        </div>
+      </a>
+    </div>
+
+    <footer>
+      Each scene is a self-contained Three.js page. Drag to orbit, scroll to zoom.
+    </footer>
+  </div>
+</body>
+</html>
