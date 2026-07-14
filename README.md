@@ -1,9 +1,9 @@
 # Three.js Object Sculptor (Claude Code)
 
 <p align="center">
-  <img src="examples/offroad-suv/reference.jpg" alt="Reference photo — stylized low-poly off-road SUV" width="360">
+  <img src="examples/offroad-suv/render.png" alt="Off-road SUV reconstructed in Three.js, with the reference photo inset" width="640">
 </p>
-<p align="center"><em>A single reference photo like this is all the plugin needs — see the reconstructed, drivable scene in <a href="examples/offroad-suv/">examples/offroad-suv/</a>.</em></p>
+<p align="center"><em>From a single reference photo (bottom-left inset) to a fully drivable, day/night Three.js scene built entirely with code — see <a href="examples/offroad-suv/">examples/offroad-suv/</a>.</em></p>
 
 Turn the object in an attached image into a quality-gated, animation-ready procedural Three.js model built entirely with code.
 
