@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Off-road SUV — Procedural Three.js</title>
+  <style>
+    :root { color-scheme: light; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #5b8fd0; }
+    #app { position: fixed; inset: 0; }
+    .hint {
+      position: fixed; left: 16px; bottom: 14px; z-index: 10;
+      font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: #eaf2ff; user-select: none; pointer-events: none; opacity: .85;
+    }
+    .hint b { color: #fff; }
+    #mode, #spin {
+      position: fixed; right: 16px; z-index: 10; cursor: pointer;
+      background: rgba(22,22,26,0.72); color: #fff; border: 0; border-radius: 10px;
+      padding: 9px 14px; font: 700 14px system-ui, sans-serif;
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    }
+    #mode { top: 16px; }
+    #spin { top: 60px; }
+    #mode:hover, #spin:hover { background: rgba(40,40,46,0.85); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="hint"><b>Off-road SUV</b> — drag to orbit · scroll to zoom · press <b>N</b> for day/night</div>
+  <button id="mode">🌙 Night</button>
+  <button id="spin">⏸ Pause spin</button>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+
+    // ---------- renderer / scene / camera ----------
+    const app = document.getElementById('app');
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    app.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x5b8fd0);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 200);
+    camera.position.set(8.5, 4.2, 8.5);
+    camera.lookAt(0.3, 1.3, 0);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0.3, 1.3, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 6; controls.maxDistance = 26;
+    controls.maxPolarAngle = Math.PI * 0.52;
+
+    // ---------- lighting ----------
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x8ba0bd, 0.4); scene.add(hemi);
+    const key = new THREE.DirectionalLight(0xfff4e6, 2.2);
+    key.position.set(9, 12, 6);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1; key.shadow.camera.far = 50;
+    const s = 9;
+    key.shadow.camera.left = -s; key.shadow.camera.right = s;
+    key.shadow.camera.top = s; key.shadow.camera.bottom = -s;
+    key.shadow.bias = -0.0004; key.shadow.radius = 4;
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xcfe0ff, 0.45);
+    fill.position.set(-8, 5, -7);
+    scene.add(fill);
+
+    // ---------- materials ----------
+    const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.55, metalness: o.metal ?? 0, flatShading: o.flat ?? false, ...o });
+    const M = {
+      red:    mat(0xc4483b, { rough: 0.5 }),
+      white:  mat(0xe9e7e1, { rough: 0.5 }),
+      glass:  mat(0x2c3b4a, { rough: 0.2, metal: 0.2 }),
+      glassB: mat(0x3f6fa0, { rough: 0.2, metal: 0.3 }),
+      chrome: mat(0x9aa0a6, { rough: 0.35, metal: 0.8 }),
+      grille: mat(0xb6babf, { rough: 0.4, metal: 0.6 }),
+      black:  mat(0x232427, { rough: 0.6 }),
+      tire:   mat(0x2a2a2c, { rough: 0.8, flat: true }),
+      rim:    mat(0xcbcfd3, { rough: 0.35, metal: 0.7, flat: true }),
+      hub:    mat(0x3a3c40, { rough: 0.5, metal: 0.5 }),
+      orange: mat(0xe8862b, { rough: 0.4, emissive: 0x923f06, emissiveIntensity: 0.3 }),
+      lens:   mat(0xf2f4f5, { rough: 0.15, emissive: 0xffffff, emissiveIntensity: 0.9 }),
+      plate:  mat(0xe6e6df, { rough: 0.5 }),
+      bumper: mat(0x8f959b, { rough: 0.45, metal: 0.5 }),
+    };
+
+    // ---------- helpers ----------
+    const rbox = (w, h, d, r, m) => { const x = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), m); x.castShadow = x.receiveShadow = true; return x; };
+    const bx = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = x.receiveShadow = true; return x; };
+    // disc/cylinder with axis along Z (for wheels + round lights facing +X when rotated)
+    const cylZ = (r, len, seg, m) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); g.rotation.x = Math.PI / 2; g.castShadow = g.receiveShadow = true; return g; };
+    const cylX = (r, len, seg, m) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), m); g.rotation.z = Math.PI / 2; g.castShadow = g.receiveShadow = true; return g; };
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const tube = (p0, p1, r, m) => {
+      const d = new THREE.Vector3().subVectors(p1, p0);
+      const x = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 10), m);
+      x.castShadow = true;
+      x.position.copy(p0).addScaledVector(d, 0.5);
+      x.quaternion.setFromUnitVectors(V(0, 1, 0), d.clone().normalize());
+      return x;
+    };
+
+    const car = new THREE.Group();
+    scene.add(car);
+    const runtime = { wheels: [], meshes: [] };
+    car.userData.sculptRuntime = runtime;
+
+    // ==================== BODY (two-tone) ====================
+    // white lower body
+    const lower = rbox(5.6, 0.95, 2.42, 0.22, M.white); lower.position.set(0, 1.05, 0); car.add(lower);
+    // red rocker skirt under white
+    const rocker = rbox(5.5, 0.34, 2.44, 0.14, M.red); rocker.position.set(0, 0.66, 0); car.add(rocker);
+    // red shoulder / upper body
+    const upper = rbox(5.6, 0.9, 2.4, 0.24, M.red); upper.position.set(0, 1.78, 0); car.add(upper);
+    // red hood (front, slightly lower than cabin)
+    const hood = rbox(1.7, 0.24, 2.24, 0.12, M.red); hood.position.set(2.05, 2.16, 0); car.add(hood);
+    // red fender flares over wheels
+    for (const ax of [1.95, -1.95]) for (const zs of [1, -1]) {
+      const fl = rbox(1.5, 0.5, 0.36, 0.16, M.red);
+      fl.position.set(ax, 1.28, zs * 1.24); car.add(fl);
+    }
+
+    // ==================== GREENHOUSE / CABIN ====================
+    const cabin = new THREE.Group(); car.add(cabin);
+    // dark glass block (inset)
+    const glass = rbox(2.9, 0.86, 2.06, 0.16, M.glass); glass.position.set(-0.15, 2.62, 0); cabin.add(glass);
+    // red roof
+    const roof = rbox(2.5, 0.42, 2.16, 0.2, M.red); roof.position.set(-0.25, 3.12, 0); cabin.add(roof);
+    // red pillars + window frames (thin)
+    const pillarM = M.red;
+    for (const zs of [1, -1]) {
+      // A-pillar (front, slanted)
+      cabin.add(tube(V(1.2, 2.25, zs * 1.02), V(0.95, 3.05, zs * 1.02), 0.09, pillarM));
+      // B-pillar
+      const bp = bx(0.14, 0.9, 0.14, pillarM); bp.position.set(-0.25, 2.6, zs * 1.02); cabin.add(bp);
+      // C-pillar (rear)
+      cabin.add(tube(V(-1.5, 2.25, zs * 1.02), V(-1.35, 3.05, zs * 1.02), 0.09, pillarM));
+      // top window frame rail
+      const rail = bx(2.7, 0.12, 0.12, pillarM); rail.position.set(-0.2, 3.02, zs * 1.02); cabin.add(rail);
+      // bottom window sill (red beltline)
+      const sill = bx(2.9, 0.16, 0.1, pillarM); sill.position.set(-0.15, 2.22, zs * 1.03); cabin.add(sill);
+    }
+    // windshield header frame
+    const wsHeader = bx(0.14, 0.12, 2.1, pillarM); wsHeader.position.set(0.98, 3.04, 0); cabin.add(wsHeader);
+
+    // ==================== ROOF LIGHT BAR ====================
+    const bar = new THREE.Group(); car.add(bar);
+    // grey hoop posts
+    bar.add(tube(V(0.7, 3.1, 1.0), V(0.55, 3.55, 0.9), 0.07, M.chrome));
+    bar.add(tube(V(0.7, 3.1, -1.0), V(0.55, 3.55, -0.9), 0.07, M.chrome));
+    // crossbar
+    const cross = cylZ(0.09, 2.0, 12, M.chrome); cross.position.set(0.55, 3.55, 0); bar.add(cross);
+    // 3 spotlights facing +X
+    for (const z of [-0.62, 0, 0.62]) {
+      const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.26, 16), M.chrome);
+      housing.rotation.z = Math.PI / 2 - 0.25; // tilt forward slightly
+      housing.rotation.y = 0; housing.castShadow = true;
+      housing.position.set(0.72, 3.62, z);
+      bar.add(housing);
+      const lensG = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 16), M.lens);
+      lensG.rotation.z = Math.PI / 2 - 0.25;
+      lensG.position.set(0.85, 3.66, z);
+      bar.add(lensG);
+    }
+
+    // ==================== FRONT FASCIA ====================
+    const FX = 2.82; // front plane x
+    // silver grille with vertical slats
+    const grille = bx(0.18, 0.62, 1.9, M.grille); grille.position.set(FX, 1.55, 0); car.add(grille);
+    for (let i = -6; i <= 6; i++) {
+      const slat = bx(0.22, 0.56, 0.05, M.black); slat.position.set(FX + 0.02, 1.55, i * 0.14); car.add(slat);
+    }
+    // quad round headlights (2 per side)
+    for (const zs of [1, -1]) for (const dz of [0.55, 0.98]) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.16, 18), M.chrome);
+      ring.rotation.z = Math.PI / 2; ring.position.set(FX + 0.02, 1.6, zs * dz); ring.castShadow = true; car.add(ring);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.08, 18), M.lens);
+      lens.rotation.z = Math.PI / 2; lens.position.set(FX + 0.12, 1.6, zs * dz); car.add(lens);
+    }
+    // black brush guard (bull bar)
+    const guard = new THREE.Group(); car.add(guard);
+    for (const z of [1.15, 0.4, -0.4, -1.15]) guard.add((() => { const t = bx(0.14, 1.0, 0.14, M.black); t.position.set(FX + 0.22, 1.4, z); return t; })());
+    const gTop = cylZ(0.08, 2.5, 10, M.black); gTop.position.set(FX + 0.22, 1.9, 0); guard.add(gTop);
+    const gMid = cylZ(0.08, 2.5, 10, M.black); gMid.position.set(FX + 0.24, 1.35, 0); guard.add(gMid);
+    // orange indicators
+    for (const zs of [1, -1]) { const ind = bx(0.12, 0.16, 0.3, M.orange); ind.position.set(FX + 0.02, 1.2, zs * 1.35); car.add(ind); }
+    // license plate
+    const plate = bx(0.1, 0.34, 0.7, M.plate); plate.position.set(FX + 0.14, 1.12, 0); car.add(plate);
+    // bumper
+    const bumper = rbox(0.4, 0.36, 2.3, 0.12, M.bumper); bumper.position.set(FX - 0.05, 0.86, 0); car.add(bumper);
+
+    // ==================== MIRRORS ====================
+    for (const zs of [1, -1]) {
+      const arm = bx(0.1, 0.1, 0.25, M.red); arm.position.set(1.35, 2.15, zs * 1.28); car.add(arm);
+      const head = rbox(0.28, 0.3, 0.16, 0.06, M.red); head.position.set(1.4, 2.18, zs * 1.45); car.add(head);
+      const mg = bx(0.06, 0.22, 0.1, M.glassB); mg.position.set(1.34, 2.18, zs * 1.5); car.add(mg);
+    }
+
+    // ==================== WHEELS (action-ready pivots) ====================
+    function wheel() {
+      const g = new THREE.Group();
+      const tire = cylZ(0.78, 0.52, 14, M.tire); g.add(tire);
+      const rim = cylZ(0.5, 0.54, 12, M.rim); g.add(rim);
+      // dished rim face + hub on outer side (+z)
+      const face = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.44, 0.1, 12), M.rim);
+      face.rotation.x = Math.PI / 2; face.position.z = 0.24; g.add(face);
+      const hub = cylZ(0.14, 0.6, 10, M.hub); g.add(hub);
+      // 5 spoke slots (dark)
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * Math.PI * 2;
+        const slot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.28), M.hub);
+        slot.position.set(Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0.27);
+        slot.rotation.z = a; g.add(slot);
+      }
+      return g;
+    }
+    const axle = { front: 1.95, rear: -1.95, track: 1.24 };
+    for (const [ax, tag] of [[axle.front, 'F'], [axle.rear, 'R']]) for (const zs of [1, -1]) {
+      const w = wheel();
+      w.position.set(ax, 0.78, zs * axle.track);
+      car.add(w);
+      runtime.wheels.push(w);
+    }
+
+    // ==================== ground ====================
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+    // ==================== HEADLIGHTS & OFF-ROAD SPOTLIGHTS ====================
+    const envTex = scene.environment;
+    const spotLights = [];
+    function addLamp(pos, targetPos, o) {
+      // decay 0 => flat falloff so the ground pool reads clearly as real light (no fake cone geometry)
+      const sp = new THREE.SpotLight(o.color, o.intensity, o.dist, o.angle, o.penumbra, 0);
+      sp.position.copy(pos);
+      const tgt = new THREE.Object3D(); tgt.position.copy(targetPos); car.add(tgt); sp.target = tgt;
+      car.add(sp); spotLights.push(sp);
+    }
+    // low headlights (warm) — project a bright pool on the ground ahead
+    addLamp(V(2.92, 1.55, 0.7), V(10, 0.02, 1.3), { color: 0xfff1d0, intensity: 8, dist: 60, angle: 0.36, penumbra: 0.5 });
+    addLamp(V(2.92, 1.55, -0.7), V(10, 0.02, -1.3), { color: 0xfff1d0, intensity: 8, dist: 60, angle: 0.36, penumbra: 0.5 });
+    // roof off-road spotlights (cool, stronger, longer reach)
+    for (const z of [-0.62, 0, 0.62]) {
+      addLamp(V(0.9, 3.55, z), V(13, 0.02, z * 2.1), { color: 0xeaf4ff, intensity: 11, dist: 80, angle: 0.34, penumbra: 0.45 });
+    }
+
+    // ---------- day / night toggle ----------
+    const modeBtn = document.getElementById('mode');
+    let night = false;
+    function setNight(on) {
+      night = on;
+      scene.background.set(on ? 0x2a3a58 : 0x5b8fd0);   // dusk blue, not near-black — model stays readable
+      scene.environment = envTex;                        // keep soft image-based fill at night
+      hemi.intensity = on ? 0.4 : 0.4;
+      key.intensity = on ? 0.75 : 2.2;                   // dim moonlight
+      fill.intensity = on ? 0.22 : 0.45;
+      renderer.toneMappingExposure = on ? 1.0 : 1.05;
+      M.lens.emissiveIntensity = on ? 2.8 : 0.9;
+      for (const sp of spotLights) sp.visible = on;
+      bloom.strength = on ? 0.7 : 0.3;
+      floor.material.color.set(on ? 0x2a3a58 : 0x5b8fd0);   // ground matches the sky
+      if (modeBtn) modeBtn.textContent = on ? '🌙 Night' : '☀ Day';
+    }
+
+    // ==================== POST-PROCESSING ====================
+    const composer = new EffectComposer(renderer);
+    composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    composer.setSize(innerWidth, innerHeight);
+    composer.addPass(new RenderPass(scene, camera));
+    const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+    gtao.output = GTAOPass.OUTPUT.Default;
+    gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false });
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+    composer.addPass(gtao);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.5, 0.85);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    composer.addPass(new SMAAPass(innerWidth, innerHeight));
+
+    // ---------- resize + loop ----------
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+    });
+    let t0 = 0;
+    function animate(t) {
+      requestAnimationFrame(animate);
+      const dt = (t - t0) / 1000; t0 = t;
+      if (rotating) car.rotation.y += dt * 0.25; // slow turntable
+      controls.update();
+      composer.render();
+    }
+    // wire the day/night toggle and start in off-road night mode
+    if (modeBtn) modeBtn.onclick = () => setNight(!night);
+    addEventListener('keydown', e => { if (e.code === 'KeyN') setNight(!night); });
+    setNight(true);
+
+    // pause / resume auto-rotation
+    let rotating = true;
+    const spinBtn = document.getElementById('spin');
+    function setSpin(on) { rotating = on; if (spinBtn) spinBtn.textContent = on ? '⏸ Pause spin' : '▶ Resume spin'; }
+    if (spinBtn) spinBtn.onclick = () => setSpin(!rotating);
+    addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); setSpin(!rotating); } });
+
+    requestAnimationFrame(animate);
+    window.__scene = { scene, camera, renderer, car };
+  </script>
+</body>
+</html>

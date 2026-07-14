@@ -184,16 +184,17 @@ If a critical feature fails its threshold, the pass fails even when the global s
 
 ## Example Output
 
-A worked example lives in [`examples/stonehenge-diorama/`](examples/stonehenge-diorama/) — a low-poly
-isometric Stonehenge diorama on a floating island, generated end-to-end with this skill from a single
-reference image. It is a self-contained Three.js scene.
+A worked example lives in [`examples/offroad-suv/`](examples/offroad-suv/) — a stylized low-poly
+off-road SUV, generated end-to-end with this skill from a single reference image. It is a
+self-contained Three.js scene with an action-ready wheel hierarchy, GTAO + bloom post-processing,
+real headlight/roof spotlights, and a day/night ("off-road") mode toggle (press `N`).
 
 To view it (ES-module scenes must be served over HTTP, not opened as a `file://`):
 
 ```bash
-cd examples/stonehenge-diorama
-python3 -m http.server 8777
-# then open http://localhost:8777/
+cd examples/offroad-suv
+python3 -m http.server 8781
+# then open http://localhost:8781/
 ```
 
 ## Project Layout
@@ -204,7 +205,7 @@ python3 -m http.server 8777
 commands/sculpt.md                    # /threejs-object-sculptor:sculpt slash command
 skills/object-to-threejs-procedural/  # the skill (SKILL.md + references/)
 scripts/                              # Python helper scripts
-examples/stonehenge-diorama/          # worked example scene
+examples/offroad-suv/                 # worked example scene
 ```
 
 Important scripts:
